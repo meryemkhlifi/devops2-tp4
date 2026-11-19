@@ -29,7 +29,7 @@ Principe du moindre privilège : `deployer` ne peut qu'ajouter/éditer dans `npm
 **Q4.** Après le `npm ci`, que contient `npm-proxy` ? Pourquoi le `package-lock.json` n'a-t-il pas changé alors que les paquets viennent désormais de Nexus ?
 
 `npm-proxy` contient les paquets téléchargés (`next`, `react`, `vitest`… et leurs dépendances transitives, 140 paquets au total), mis en cache. Le `package-lock.json` n'a pas changé car les paquets sont les mêmes tarballs (mêmes versions, mêmes empreintes d'intégrité) ; npm remplace seulement l'hôte du registre par défaut par celui configuré dans `.npmrc`, sans modifier le lockfile.
-
+![npm-proxy](captures/npm-proxy.png)
 **Q5.** Demain, npmjs.org est indisponible. Que se passe-t-il au prochain `npm ci` du front ? Et pour un paquet que personne n'a encore téléchargé via votre Nexus ?
 
 Le `npm ci` du front réussit : tous ses paquets sont déjà dans le cache de `npm-proxy`, Nexus les sert sans contacter npmjs.org. Pour un paquet jamais demandé, Nexus doit aller le chercher chez npmjs.org : il échoue (erreur 404/502 ou timeout) tant que npmjs.org est indisponible.
@@ -52,11 +52,11 @@ Sans `publishConfig`, npm publierait vers le registre configuré dans `.npmrc`, 
 Message obtenu : `À RECOPIER DEPUIS TON TERMINAL (copie l'erreur npm affichée au second publish de 0.1.0)`
 
 Nexus refuse car `npm-hosted` est en *Disable redeploy* : une version publiée est immuable. Cela évite que le contenu de `0.1.0` change après coup : le lockfile de ceux qui l'ont installée contient l'empreinte d'intégrité de l'archive d'origine, donc une version republiée avec un contenu différent ferait échouer leur `npm ci` (ou, pire, changerait le code sans que personne le voie). Pour corriger, on publie une nouvelle version.
-
+![republication](captures/republication.png)
 **Q9.** Pourquoi la version 0.2.0, et pas 0.1.1 ni 1.0.0 ?
 
 SemVer `MAJEUR.MINEUR.CORRECTIF` : on a ajouté une **fonctionnalité** (`formatLevel`) **compatible** avec l'existant, donc on incrémente le **MINEUR** (0.1.0 → 0.2.0). `0.1.1` est réservé à une simple correction de bug ; `1.0.0` annoncerait une API stable ou un changement incompatible, ce qui n'est pas le cas.
-
+![npm-hosted](captures/npm-hosted.png)
 **Q10.** Quelles versions la plage `^0.2.0` accepte-t-elle ? Si vous publiez 0.2.1 puis 0.3.0, lesquelles le front prendra-t-il au prochain `npm install` ? Et au prochain `npm ci` ?
 
 Pour une version `0.x`, `^0.2.0` accepte `>=0.2.0 <0.3.0` (le chiffre non nul le plus à gauche est figé). Au prochain `npm install`, le front prend **0.2.1** (pas 0.3.0, hors plage). Au prochain `npm ci`, il installe exactement la version du lockfile (**0.2.0**) : `npm ci` ne met jamais le lockfile à jour.
@@ -84,7 +84,7 @@ Le port 8082 est celui de `docker-hosted` (on y écrit) et 8083 celui de `docker
 Deux étapes à automatiser en CI : (1) lancer les tests (`npm test` du paquet et `docker compose run --rm unit` du front) avant toute publication ; (2) construire, taguer et pousser l'image sur `docker-hosted` (et publier le paquet npm avec `npm publish`), avec les identifiants fournis par les secrets de la CI.Ils sont identiques : c'est le même contenu, simplement récupéré via un autre port. Le digest est l'empreinte SHA-256 du manifeste : il identifie un contenu précis et immuable, alors qu'un tag est un pointeur modifiable qui peut être repointé vers une autre image.
 
 L'image `cours-frontend:1.0.0` (le front avec `@devops2/cours-utils`) est **construite une seule fois**, **stockée** dans `docker-hosted` sur Nexus (port 8082), puis **déployée** sans rebuild : le `docker-compose.yml` n'a plus de bloc `build:` et référence `image: localhost:8083/cours-frontend:1.0.0`, tirée via le group (idem pour postgres via `docker-proxy`). Le même artefact peut être lancé partout.
-
+![digests](captures/digests.png)
 **Q14.** Pourquoi ne publie-t-on jamais une image sous le seul tag `latest` pour la déployer ?
 
 `latest` est mutable et ambigu : on ne sait pas quelle version tourne, deux déploiements à des dates différentes peuvent récupérer des contenus différents, et le retour arrière est impossible. Un tag de version explicite (`1.0.0`), idéalement figé par digest, rend le déploiement reproductible et traçable.
